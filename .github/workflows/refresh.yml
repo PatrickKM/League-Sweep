@@ -1,0 +1,15 @@
+# Manual data refresh: Actions tab → "Refresh data" → Run workflow.
+name: Refresh data
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  refresh:
+    uses: ./.github/workflows/pages.yml
+    secrets: inherit

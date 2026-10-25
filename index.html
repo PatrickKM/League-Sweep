@@ -22,12 +22,16 @@
   h2 { margin:0 0 12px; font-size:16px; color:var(--gold); text-transform:uppercase; letter-spacing:1px; }
   h3 { margin:0 0 8px; font-size:12px; color:var(--dim); text-transform:uppercase; }
   .error { color:var(--loss); }
-  .bracket { display:flex; gap:32px; overflow-x:auto; padding-bottom:12px; }
+  .bracket { display:flex; gap:32px; overflow-x:auto; padding-bottom:12px; position:relative; }
+  .lines { position:absolute; top:0; left:0; pointer-events:none; fill:none; stroke-width:2; stroke:var(--dim); stroke-linejoin:miter; opacity:.35; }
+  .lines .win { stroke:var(--win); opacity:1; }
+  .bracket h2, .bracket .match { position:relative; z-index:1; }
   .stage { display:flex; flex-direction:column; }
   .stage + .stage { padding-left:32px; border-left:2px solid var(--line); }
   .cols { display:flex; gap:24px; flex:1; }
+  .ko .cols { gap:40px; }
   .col { display:flex; flex-direction:column; gap:16px; width:250px; flex-shrink:0; }
-  .ko .col { justify-content:space-around; }
+  .ko .games { flex:1; display:flex; flex-direction:column; justify-content:space-around; gap:16px; } /* each match centres between the two it feeds from */
   .group { display:flex; flex-direction:column; gap:8px; }
   .match { background:var(--panel); border:1px solid var(--line); border-radius:8px; overflow:hidden; }
   .match.live { border-color:var(--gold); }
@@ -59,7 +63,7 @@
 <body>
 <header>
   <h1>Worlds 2026 Sweep</h1>
-  <button id="refresh">Refresh</button>
+  <button id="refresh" hidden>Refresh</button>
   <span class="meta" id="meta">Loading…</span>
 </header>
 <main id="app"></main>
@@ -78,7 +82,7 @@ function matchCard(e) {
   const status = live ? 'LIVE' : e.state === 'completed' ? 'Final' : fmtTime(e.startTime);
   const rows = e.teams.map(t => isTbd(t)
     ? `<div class="team"><span class="code">TBD</span></div>`
-    : `<div class="team ${e.state === 'completed' ? esc(t.outcome) : ''} ${out.has(t.slug) ? 'out' : ''}">
+    : `<div class="team ${e.state === 'completed' ? esc(t.outcome) : ''} ${out.has(t.slug) ? 'out' : ''}" data-team="${esc(t.slug)}">
          <span class="owner">${esc(owners[t.code])}</span>
          <img src="${esc(t.imageUrl)}" alt="">
          <span class="code" title="${esc(t.name)}">${esc(t.code)}</span>
@@ -165,7 +169,7 @@ async function load(refresh = false) {
         <div class="stage"><h2>Play-Ins</h2><div class="cols"><div class="col"><h3>Matches</h3>${playIns.map(matchCard).join('')}</div></div></div>
         <div class="stage"><h2>Swiss Stage</h2><div class="cols">${swissRounds(swiss)}</div></div>
         <div class="stage ko"><h2>Knockouts</h2><div class="cols">
-          ${koStages.map(n => `<div class="col"><h3>${n}</h3>${stage(n).map(matchCard).join('')}</div>`).join('')}
+          ${koStages.map(n => `<div class="col"><h3>${n}</h3><div class="games">${stage(n).map(matchCard).join('')}</div></div>`).join('')}
         </div></div>
       </div>
       <section><h2>Standings</h2>
@@ -176,12 +180,46 @@ async function load(refresh = false) {
         ${derived ? '<div class="note">Riot hasn\'t published standings yet, so these are worked out from match results.</div>' : ''}
       </section>`;
     document.getElementById('meta').textContent = `Data from ${fmtTime(fetchedAt)}`;
+    drawLines();
   } catch (err) {
     document.getElementById('meta').innerHTML = `<span class="error">${esc(err.message)}</span>`;
   }
 }
 
+// SVG overlay: each knockout match to its slot in the next round.
+function drawLines() {
+  const box = app.querySelector('.bracket');
+  if (!box) return;
+  box.querySelector('.lines')?.remove();
+  const b = box.getBoundingClientRect(), paths = [];
+  const pt = (el, side) => {
+    const r = el.getBoundingClientRect();
+    return [(side === 'r' ? r.right : r.left) - b.left + box.scrollLeft, r.top + r.height / 2 - b.top + box.scrollTop];
+  };
+  const link = (from, to, cls) => {
+    const xm = (from[0] + to[0]) / 2;
+    paths.push(`<path class="${cls}" d="M${from} H${xm} V${to[1]} H${to[0]}"/>`);
+  };
+  const teamRow = (scope, slug) => slug && scope.querySelector(`.team[data-team="${CSS.escape(slug)}"]`);
+
+  // shortcut: assumes schedule order pairs QF1+QF2 → SF1 and QF3+QF4 → SF2; reorder here if Riot's bracket differs
+  const ko = [...box.querySelectorAll('.ko .games')].map(g => [...g.querySelectorAll('.match')]);
+  ko.slice(0, -1).forEach((cards, i) => cards.forEach((card, j) => {
+    const target = ko[i + 1][j >> 1];
+    if (!target) return;
+    const win = card.querySelector('.team.win');
+    const slot = teamRow(target, win?.dataset.team) || target.querySelectorAll('.team')[j % 2];
+    link(pt(win || card, 'r'), pt(slot || target, 'l'), win ? 'win' : '');
+  }));
+
+  box.insertAdjacentHTML('afterbegin', `<svg class="lines" width="${box.scrollWidth}" height="${box.scrollHeight}">${paths.join('')}</svg>`);
+}
+
 document.getElementById('refresh').onclick = () => load(true);
+// Only the local server can call Cito; GitHub Pages is a static snapshot refreshed via the "Refresh data" Action.
+document.getElementById('refresh').hidden = !['localhost', '127.0.0.1'].includes(location.hostname);
+addEventListener('resize', drawLines);
+document.fonts.ready.then(drawLines); // font swap shifts card positions
 load();
 </script>
 </body>
