@@ -1,0 +1,39 @@
+# Fetches Cito data with the repo secret and publishes a static snapshot to GitHub Pages.
+# Run it manually from the Actions tab ("Run workflow") to refresh the data. Pushes to main also redeploy.
+name: Deploy to GitHub Pages
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Build site
+        env:
+          CITO_API_KEY: ${{ secrets.CITO_API_KEY }}
+        run: |
+          mkdir _site
+          cp -r index.html owners.json fonts _site/
+          node server.js --build _site
+      - uses: actions/upload-pages-artifact@v3
+      - id: deployment
+        uses: actions/deploy-pages@v4

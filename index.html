@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Worlds 2026 Sweep</title>
+<style>
+  @font-face { font-family:'Beaufort for LOL'; src:url(fonts/BeaufortforLOL-Bold.ttf); font-weight:700; }
+  @font-face { font-family:'Spiegel'; src:url(fonts/Spiegel_TT_Regular.ttf); font-weight:400; }
+  @font-face { font-family:'Spiegel'; src:url(fonts/Spiegel_TT_SemiBold.ttf); font-weight:600; }
+  @font-face { font-family:'Spiegel'; src:url(fonts/Spiegel_TT_Bold.ttf); font-weight:700; }
+  :root { --bg:#0b0f17; --panel:#131a26; --line:#243045; --text:#e6ebf5; --dim:#8a96ab; --gold:#c8aa6e; --win:#3fb950; --loss:#f85149; }
+  * { box-sizing: border-box; }
+  html { color-scheme:dark; scrollbar-color:var(--gold) var(--panel); }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.4 Spiegel, system-ui, sans-serif; }
+  h1, h2, h3, button { font-family:'Beaufort for LOL', Georgia, serif; font-weight:700; }
+  header { display:flex; align-items:center; gap:16px; padding:16px 24px; border-bottom:1px solid var(--line); }
+  header h1 { margin:0; font-size:20px; color:var(--gold); letter-spacing:.5px; }
+  header .meta { color:var(--dim); margin-left:auto; }
+  button { background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:6px; padding:6px 12px; cursor:pointer; }
+  main { padding:24px; display:grid; gap:32px; }
+  h2 { margin:0 0 12px; font-size:16px; color:var(--gold); text-transform:uppercase; letter-spacing:1px; }
+  h3 { margin:0 0 8px; font-size:12px; color:var(--dim); text-transform:uppercase; }
+  .error { color:var(--loss); }
+  .bracket { display:flex; gap:32px; overflow-x:auto; padding-bottom:12px; }
+  .stage { display:flex; flex-direction:column; }
+  .stage + .stage { padding-left:32px; border-left:2px solid var(--line); }
+  .cols { display:flex; gap:24px; flex:1; }
+  .col { display:flex; flex-direction:column; gap:16px; width:250px; flex-shrink:0; }
+  .ko .col { justify-content:space-around; }
+  .group { display:flex; flex-direction:column; gap:8px; }
+  .match { background:var(--panel); border:1px solid var(--line); border-radius:8px; overflow:hidden; }
+  .match.live { border-color:var(--gold); }
+  .match .info { display:flex; justify-content:space-between; padding:4px 10px; font-size:11px; color:var(--dim); border-bottom:1px solid var(--line); }
+  .match.live .info { color:var(--gold); }
+  .team { display:flex; align-items:center; gap:8px; padding:6px 10px; }
+  .team + .team { border-top:1px solid var(--line); }
+  .team img { width:20px; height:20px; object-fit:contain; }
+  .team .code { font-weight:600; min-width:44px; }
+  .team .score { margin-left:auto; font-weight:700; }
+  .team.win .score { color:var(--win); }
+  .team.win { box-shadow:inset 4px 0 var(--win); background:#3fb95014; }
+  .team.loss { box-shadow:inset 4px 0 var(--loss); background:#f8514914; }
+  .team.loss { opacity:.55; }
+  .owner { font-size:11px; color:var(--gold); background:#c8aa6e1a; border-radius:4px; padding:1px 6px; white-space:nowrap; }
+  .team .owner { width:64px; text-align:center; overflow:hidden; text-overflow:ellipsis; flex-shrink:0; }
+  .owner:empty { background:none; }
+  table { border-collapse:collapse; background:var(--panel); border:1px solid var(--line); border-radius:8px; min-width:420px; }
+  th, td { padding:6px 12px; text-align:left; border-bottom:1px solid var(--line); }
+  th { color:var(--dim); font-size:11px; text-transform:uppercase; }
+  td img { width:18px; height:18px; object-fit:contain; vertical-align:middle; margin-right:6px; }
+  tr.adv td:first-child { box-shadow:inset 3px 0 var(--win); }
+  .team.out, tr.out { filter:grayscale(1); opacity:.35; }
+  tr.out td:first-child { box-shadow:inset 3px 0 var(--loss); }
+  .tables { display:flex; gap:24px; flex-wrap:wrap; align-items:flex-start; }
+  .note { color:var(--dim); font-size:12px; margin-top:6px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Worlds 2026 Sweep</h1>
+  <button id="refresh">Refresh</button>
+  <span class="meta" id="meta">Loading…</span>
+</header>
+<main id="app"></main>
+
+<script>
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
+const app = document.getElementById('app');
+let owners = {}, teams = {}, out = new Set();
+
+const ownerTag = code => owners[code] ? `<span class="owner">${esc(owners[code])}</span>` : '';
+const isTbd = t => !t || t.slug === 'tbd';
+const fmtTime = iso => new Date(iso).toLocaleString([], { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
+
+function matchCard(e) {
+  const live = e.state === 'inProgress';
+  const status = live ? 'LIVE' : e.state === 'completed' ? 'Final' : fmtTime(e.startTime);
+  const rows = e.teams.map(t => isTbd(t)
+    ? `<div class="team"><span class="code">TBD</span></div>`
+    : `<div class="team ${e.state === 'completed' ? esc(t.outcome) : ''} ${out.has(t.slug) ? 'out' : ''}">
+         <span class="owner">${esc(owners[t.code])}</span>
+         <img src="${esc(t.imageUrl)}" alt="">
+         <span class="code" title="${esc(t.name)}">${esc(t.code)}</span>
+         <span class="score">${e.state === 'unstarted' ? '' : esc(t.score ?? 0)}</span>
+       </div>`).join('');
+  return `<div class="match ${live ? 'live' : ''}"><div class="info"><span>Bo${esc(e.strategy?.count)}</span><span>${status}</span></div>${rows}</div>`;
+}
+
+// Series W-L per team from completed matches in a stage.
+function deriveStandings(events) {
+  const rec = {};
+  for (const e of events) for (const t of e.teams) {
+    if (isTbd(t)) continue;
+    const r = rec[t.slug] ??= { slug: t.slug, wins: 0, losses: 0 };
+    if (e.state === 'completed') r[t.outcome === 'win' ? 'wins' : 'losses']++;
+  }
+  return Object.values(rec).sort((a, b) => b.wins - a.wins || a.losses - b.losses);
+}
+
+function standingsTable(title, rows, { advanceAt } = {}) {
+  const body = rows.map(r => {
+    const t = teams[r.slug] || { name: r.teamName, code: '' };
+    const cls = out.has(r.slug) ? 'out' : advanceAt && r.wins >= advanceAt ? 'adv' : '';
+    return `<tr class="${cls}"><td>${ownerTag(t.code) || '—'}</td><td><img src="${esc(t.imageUrl)}" alt="">${esc(t.name)}</td><td>${esc(t.code)}</td><td>${r.wins}-${r.losses}</td></tr>`;
+  }).join('');
+  return `<div><h3>${esc(title)}</h3><table><thead><tr><th>Owner</th><th>Team</th><th>Code</th><th>W-L</th></tr></thead><tbody>${body}</tbody></table></div>`;
+}
+
+// Swiss: bucket each match by the (shared) record both teams had going in.
+function swissRounds(events) {
+  const rec = {}, rounds = {}, tbd = [];
+  for (const e of [...events].sort((a, b) => a.startTime.localeCompare(b.startTime))) {
+    if (e.teams.some(isTbd)) { tbd.push(e); continue; }
+    const [w, l] = rec[e.teams[0].slug] ?? [0, 0];
+    ((rounds[w + l] ??= {})[`${w}-${l}`] ??= []).push(e);
+    if (e.state === 'completed') for (const t of e.teams) {
+      const r = rec[t.slug] ??= [0, 0];
+      r[t.outcome === 'win' ? 0 : 1]++;
+    }
+  }
+  const cols = Object.keys(rounds).sort().map(round => {
+    const groups = Object.entries(rounds[round]).sort(([a], [b]) => b.localeCompare(a));
+    return `<div class="col"><h3>Round ${+round + 1}</h3>${groups.map(([k, ms]) => `<div class="group"><h3>${k}</h3>${ms.map(matchCard).join('')}</div>`).join('')}</div>`;
+  });
+  if (tbd.length) cols.push(`<div class="col"><h3>Upcoming rounds</h3>${tbd.map(matchCard).join('')}</div>`);
+  return cols.join('');
+}
+
+// Eliminated: 3 Swiss losses, play-in teams that didn't reach Swiss, knockout losers.
+function eliminated(playIns, swissRows, knockouts) {
+  const inSwiss = new Set(swissRows.map(r => r.slug));
+  return new Set([
+    ...swissRows.filter(r => r.losses >= 3).map(r => r.slug),
+    ...(inSwiss.size ? deriveStandings(playIns).map(r => r.slug).filter(s => !inSwiss.has(s)) : []),
+    ...knockouts.filter(e => e.state === 'completed').flatMap(e => e.teams.filter(t => t.outcome === 'loss').map(t => t.slug)),
+  ]);
+}
+
+async function load(refresh = false) {
+  document.getElementById('meta').textContent = 'Loading…';
+  try {
+    let fetchedAt;
+    const q = refresh ? '?refresh=1' : '';
+    const [schedule, standings, own] = await Promise.all([`api/schedule${q}`, `api/standings${q}`, 'owners.json'].map(async u => {
+      const r = await fetch(u, { cache: 'no-store' });
+      if (!r.ok) throw new Error(`${u}: ${(await r.json().catch(() => ({}))).error || r.status}`);
+      fetchedAt ??= r.headers.get('x-fetched-at') ?? r.headers.get('last-modified'); // last-modified = deploy time on GitHub Pages
+      return r.json();
+    }));
+    owners = own;
+    for (const e of schedule) for (const t of e.teams) if (!isTbd(t)) {
+      if (t.code === 'ML') t.code = 'LOS'; // Cito says ML, we call them LOS
+      teams[t.slug] = t;
+    }
+    const stage = name => schedule.filter(e => e.blockName === name);
+    const playIns = stage('Play-Ins'), swiss = stage('Swiss');
+    const swissRows = standings.stage === 'Swiss' && standings.rankings.length ? standings.rankings.map(r => ({ ...r, slug: r.orgSlug })) : deriveStandings(swiss);
+    const derived = !(standings.stage === 'Swiss' && standings.rankings.length);
+    const koStages = ['Quarterfinals', 'Semifinals', 'Finals'];
+    out = eliminated(playIns, swissRows, koStages.flatMap(stage));
+
+    app.innerHTML = `
+      <div class="bracket">
+        <div class="stage"><h2>Play-Ins</h2><div class="cols"><div class="col"><h3>Matches</h3>${playIns.map(matchCard).join('')}</div></div></div>
+        <div class="stage"><h2>Swiss Stage</h2><div class="cols">${swissRounds(swiss)}</div></div>
+        <div class="stage ko"><h2>Knockouts</h2><div class="cols">
+          ${koStages.map(n => `<div class="col"><h3>${n}</h3>${stage(n).map(matchCard).join('')}</div>`).join('')}
+        </div></div>
+      </div>
+      <section><h2>Standings</h2>
+        <div class="tables">
+          ${standingsTable('Swiss · 3 wins advance · 3 losses eliminated', swissRows, { advanceAt: 3 })}
+          ${standingsTable('Play-Ins', deriveStandings(playIns))}
+        </div>
+        ${derived ? '<div class="note">Riot hasn\'t published standings yet, so these are worked out from match results.</div>' : ''}
+      </section>`;
+    document.getElementById('meta').textContent = `Data from ${fmtTime(fetchedAt)}`;
+  } catch (err) {
+    document.getElementById('meta').innerHTML = `<span class="error">${esc(err.message)}</span>`;
+  }
+}
+
+document.getElementById('refresh').onclick = () => load(true);
+load();
+</script>
+</body>
+</html>
