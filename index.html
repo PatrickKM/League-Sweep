@@ -47,7 +47,7 @@
   .team.loss { box-shadow:inset 4px 0 var(--loss); background:#f8514914; }
   .team.loss { opacity:.55; }
   .owner { font-size:11px; color:var(--gold); background:#c8aa6e1a; border-radius:4px; padding:1px 6px; white-space:nowrap; }
-  .team .owner { width:64px; text-align:center; overflow:hidden; text-overflow:ellipsis; flex-shrink:0; }
+  .owner { display:inline-block; width:64px; text-align:center; overflow:hidden; text-overflow:ellipsis; flex-shrink:0; vertical-align:middle; }
   .owner:empty { background:none; }
   table { border-collapse:collapse; background:var(--panel); border:1px solid var(--line); border-radius:8px; min-width:420px; }
   th, td { padding:6px 12px; text-align:left; border-bottom:1px solid var(--line); }
@@ -75,7 +75,11 @@ let owners = {}, teams = {}, out = new Set();
 
 const ownerTag = code => owners[code] ? `<span class="owner">${esc(owners[code])}</span>` : '';
 const isTbd = t => !t || t.slug === 'tbd';
-const fmtTime = iso => new Date(iso).toLocaleString([], { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
+const clock = (d, timeZone) => d.toLocaleTimeString('en-GB', { timeZone, hour:'2-digit', minute:'2-digit', hourCycle:'h23' });
+const fmtTime = iso => {
+  const d = new Date(iso);
+  return `${d.toLocaleDateString('en-GB', { timeZone:'Europe/London', day:'numeric', month:'short' })} · ${clock(d, 'Europe/London')} UK · ${clock(d, 'Europe/Copenhagen')} CPH`;
+};
 
 function matchCard(e) {
   const live = e.state === 'inProgress';
