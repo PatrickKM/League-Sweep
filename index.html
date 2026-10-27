@@ -118,7 +118,8 @@ function standingsTable(title, rows, { advanceAt } = {}) {
 // Swiss: bucket each match by the (shared) record both teams had going in.
 function swissRounds(events) {
   const rec = {}, rounds = {}, tbd = [];
-  for (const e of [...events].sort((a, b) => a.startTime.localeCompare(b.startTime))) {
+  const sorted = [...events].sort((a, b) => a.startTime.localeCompare(b.startTime));
+  for (const e of sorted) {
     if (e.teams.some(isTbd)) { tbd.push(e); continue; }
     const [w, l] = rec[e.teams[0].slug] ?? [0, 0];
     ((rounds[w + l] ??= {})[`${w}-${l}`] ??= []).push(e);
@@ -127,12 +128,17 @@ function swissRounds(events) {
       r[t.outcome === 'win' ? 0 : 1]++;
     }
   }
-  const cols = Object.keys(rounds).sort().map(round => {
+  // 16-team Swiss always has 8/8/8/6/3 matches per round; fill TBD matches into rounds by date order.
+  const SIZES = [8, 8, 8, 6, 3], LABELS = ['0-0', '1-0 / 0-1', '2-0 / 1-1 / 0-2', '2-1 / 1-2', '2-2'];
+  const count = r => Object.values(rounds[r] ?? {}).flat().length;
+  for (const e of tbd) {
+    const r = SIZES.findIndex((n, i) => count(i) < n);
+    ((rounds[r < 0 ? SIZES.length : r] ??= {})[LABELS[r] ?? 'TBD'] ??= []).push(e);
+  }
+  return Object.keys(rounds).sort().map(round => {
     const groups = Object.entries(rounds[round]).sort(([a], [b]) => b.localeCompare(a));
     return `<div class="col"><h3>Round ${+round + 1}</h3>${groups.map(([k, ms]) => `<div class="group"><h3>${k}</h3>${ms.map(matchCard).join('')}</div>`).join('')}</div>`;
-  });
-  if (tbd.length) cols.push(`<div class="col"><h3>Upcoming rounds</h3>${tbd.map(matchCard).join('')}</div>`);
-  return cols.join('');
+  }).join('');
 }
 
 // Eliminated: 3 Swiss losses, play-in teams that didn't reach Swiss, knockout losers.
