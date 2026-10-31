@@ -156,7 +156,7 @@ async function load(refresh = false) {
   try {
     let fetchedAt;
     const q = refresh ? '?refresh=1' : '';
-    const [schedule, standings, own] = await Promise.all([`api/schedule${q}`, `api/standings${q}`, 'owners.json'].map(async u => {
+    const [schedule, standings, own, overrides] = await Promise.all([`api/schedule${q}`, `api/standings${q}`, 'owners.json', 'overrides.json'].map(async u => {
       const r = await fetch(u, { cache: 'no-store' });
       if (!r.ok) throw new Error(`${u}: ${(await r.json().catch(() => ({}))).error || r.status}`);
       fetchedAt ??= r.headers.get('x-fetched-at') ?? r.headers.get('last-modified'); // last-modified = deploy time on GitHub Pages
@@ -166,6 +166,12 @@ async function load(refresh = false) {
     for (const e of schedule) for (const t of e.teams) if (!isTbd(t)) {
       if (t.code === 'ML') t.code = 'LOS'; // Cito says ML, we call them LOS
       teams[t.slug] = t;
+    }
+    // overrides.json fills matchups the API still shows as TBD (keyed by startTime); the API wins once it has them.
+    const byCode = Object.fromEntries(Object.values(teams).map(t => [t.code, t]));
+    for (const e of schedule) {
+      const codes = overrides[e.startTime];
+      if (codes?.every(c => byCode[c]) && e.teams.every(isTbd)) e.teams = codes.map(c => ({ ...byCode[c], score: 0, outcome: undefined }));
     }
     const stage = name => schedule.filter(e => e.blockName === name);
     const playIns = stage('Play-Ins'), swiss = stage('Swiss');

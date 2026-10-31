@@ -32,7 +32,7 @@ jobs:
           CITO_API_KEY: ${{ secrets.CITO_API_KEY }}
         run: |
           mkdir _site
-          cp -r index.html owners.json fonts _site/
+          cp -r index.html owners.json overrides.json fonts _site/
           node server.js --build _site
       - uses: actions/upload-pages-artifact@v3
       - id: deployment

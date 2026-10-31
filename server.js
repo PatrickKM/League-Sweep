@@ -43,7 +43,7 @@ if (process.argv.includes('--build')) {
   return;
 }
 
-const files = { '/': 'index.html', '/owners.json': 'owners.json' };
+const files = { '/': 'index.html', '/owners.json': 'owners.json', '/overrides.json': 'overrides.json' };
 
 http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
